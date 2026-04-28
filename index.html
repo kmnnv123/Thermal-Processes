@@ -3,27 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Thermodynamics Simulation - Advanced</title>
+    <title>3D Thermodynamics Simulation - Complete</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/effects/OutlineEffect.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        /* Updated body background and sketchy font */
         body { margin: 0; overflow: hidden; background-color: #f8fafc; font-family: 'Comic Neue', cursive; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding-bottom: 2rem; padding-top: 1.5rem; }
+        
+        #ui-layer { 
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10; 
+            pointer-events: none; display: flex; flex-direction: column; 
+            justify-content: space-between; padding-bottom: 2rem; padding-top: 1.5rem; 
+        }
+        
         .pointer-events-auto { pointer-events: auto; }
         .eq-term { transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), color 0.3s; }
         
-        /* --- SKETCHY UI CSS --- */
         .sketchy-panel {
             background-color: #ffffff;
             border: 3px solid #1e293b;
             border-radius: 2px 255px 3px 25px / 255px 5px 225px 3px;
             box-shadow: 6px 6px 0px #1e293b;
-            transition: border-color 0.3s, box-shadow 0.3s;
+            transition: border-color 0.3s, box-shadow 0.3s, opacity 0.5s, transform 0.5s;
         }
         
         .sketchy-btn {
@@ -37,9 +41,7 @@
             transform: translate(3px, 3px);
             box-shadow: 1px 1px 0px #1e293b;
         }
-        .sketchy-btn:disabled { 
-            opacity: 0.4; filter: grayscale(100%); cursor: not-allowed; display: none; 
-        }
+        .sketchy-btn:disabled { opacity: 0.4; filter: grayscale(100%); cursor: not-allowed; display: none; }
         
         .mode-btn { transition: all 0.1s; border: 2px solid transparent; }
         .mode-btn:hover { background-color: #f1f5f9; }
@@ -51,92 +53,95 @@
             box-shadow: inset 2px 2px 0px rgba(0,0,0,0.1);
         }
 
-        canvas#pv-canvas { width: 100%; height: 100%; }
+        @keyframes popIn {
+            0% { transform: scale(0.5) translateY(-20px); opacity: 0; }
+            60% { transform: scale(1.1) translateY(2px); opacity: 1; }
+            100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
+        .animate-pop-in { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
     </style>
 </head>
 <body>
 
     <div id="canvas-container"></div>
 
+    <!-- STANDARD UI LAYER -->
     <div id="ui-layer">
         
-        <!-- Top Navigation Area -->
+        <!-- Top Nav -->
         <div class="w-full flex justify-between items-start px-4 md:px-8 pointer-events-none gap-4">
             
-            <!-- Live PV Graph (Left) -->
-            <div id="pv-graph-container" class="sketchy-panel w-48 h-40 md:w-64 md:h-48 pointer-events-auto flex flex-col p-3 relative">
+            <!-- PV Graph Container -->
+            <div id="pv-graph-container" class="sketchy-panel w-64 h-52 md:w-80 md:h-64 pointer-events-auto flex flex-col p-4 relative transition-opacity duration-500">
                 <h3 class="text-slate-800 text-[10px] md:text-xs uppercase tracking-widest font-bold mb-1">P-V Diagram</h3>
-                <div class="flex-grow relative border-l-[3px] border-b-[3px] border-slate-800">
-                    <span class="absolute -left-4 -top-2 text-slate-800 text-[10px] font-bold">P</span>
-                    <span class="absolute -right-2 -bottom-5 text-slate-800 text-[10px] font-bold">V</span>
-                    <canvas id="pv-canvas"></canvas>
+                <div class="flex-grow relative w-full overflow-hidden">
+                    <span class="absolute left-2 top-0 text-slate-800 text-sm font-bold italic font-serif z-10 pointer-events-none">p</span>
+                    <span class="absolute right-2 bottom-0 text-slate-800 text-sm font-bold italic font-serif z-10 pointer-events-none">V</span>
+                    <!-- Absolute positioning fixes canvas stretching bug -->
+                    <canvas id="pv-canvas" class="absolute top-0 left-0 w-full h-full block z-0"></canvas>
                 </div>
             </div>
 
-            <!-- Process Mode Selector (Right) -->
-            <div class="sketchy-panel p-2 pointer-events-auto flex flex-col gap-1.5 min-w-[160px]">
-                <h3 class="text-slate-800 text-[10px] uppercase tracking-widest font-bold text-center mb-1">Process</h3>
-                <button onclick="setMode('isobaric')" id="btn-mode-isobaric" class="mode-btn active px-3 py-1.5 text-sm font-bold text-slate-900 text-left">
-                    Isobaric <span class="text-[10px] font-normal opacity-70 block">(Const. P)</span>
-                </button>
-                <button onclick="setMode('isochoric')" id="btn-mode-isochoric" class="mode-btn px-3 py-1.5 text-sm font-bold text-slate-900 text-left">
-                    Isochoric <span class="text-[10px] font-normal opacity-70 block">(Const. V)</span>
-                </button>
-                <button onclick="setMode('isothermal')" id="btn-mode-isothermal" class="mode-btn px-3 py-1.5 text-sm font-bold text-slate-900 text-left">
-                    Isothermal <span class="text-[10px] font-normal opacity-70 block">(Const. T)</span>
-                </button>
-                <button onclick="setMode('adiabatic')" id="btn-mode-adiabatic" class="mode-btn px-3 py-1.5 text-sm font-bold text-slate-900 text-left">
-                    Adiabatic <span class="text-[10px] font-normal opacity-70 block">(No Q)</span>
-                </button>
+            <div class="flex flex-col gap-2 items-end">
+                <div id="process-selector" class="sketchy-panel p-2 pointer-events-auto flex flex-col gap-1.5 min-w-[160px] transition-opacity duration-500">
+                    <h3 class="text-slate-800 text-[10px] uppercase tracking-widest font-bold text-center mb-1">Process</h3>
+                    <button onclick="setMode('isobaric')" id="btn-mode-isobaric" class="mode-btn active px-3 py-1.5 text-sm font-bold text-slate-900 text-left">Isobaric <span class="text-[10px] font-normal opacity-70 block">(Const. P)</span></button>
+                    <button onclick="setMode('isochoric')" id="btn-mode-isochoric" class="mode-btn px-3 py-1.5 text-sm font-bold text-slate-900 text-left">Isochoric <span class="text-[10px] font-normal opacity-70 block">(Const. V)</span></button>
+                    <button onclick="setMode('isothermal')" id="btn-mode-isothermal" class="mode-btn px-3 py-1.5 text-sm font-bold text-slate-900 text-left">Isothermal <span class="text-[10px] font-normal opacity-70 block">(Const. T)</span></button>
+                    <button onclick="setMode('adiabatic')" id="btn-mode-adiabatic" class="mode-btn px-3 py-1.5 text-sm font-bold text-slate-900 text-left">Adiabatic <span class="text-[10px] font-normal opacity-70 block">(No Q)</span></button>
+                    <button onclick="setMode('general')" id="btn-mode-general" class="mode-btn px-3 py-1.5 text-sm font-bold text-slate-900 text-left">All Varying <span class="text-[10px] font-normal opacity-70 block">(Graph C)</span></button>
+                </div>
+
+                <div id="adiabatic-tabs" class="sketchy-panel p-1 pointer-events-auto flex flex-row gap-1 w-[160px]" style="display: none;">
+                    <button onclick="setAdiabaticMode('visual')" id="btn-adia-visual" class="mode-btn active flex-1 px-1 py-1 text-[10px] font-bold text-slate-900 text-center">Visual</button>
+                    <button onclick="setAdiabaticMode('experimental')" id="btn-adia-experimental" class="mode-btn flex-1 px-1 py-1 text-[10px] font-bold text-slate-900 text-center">Experimental</button>
+                </div>
+
+                <div id="general-info" class="sketchy-panel p-3 pointer-events-auto flex flex-col gap-1 w-[160px] md:w-[200px]" style="display: none;">
+                    <h3 class="text-slate-800 text-[10px] uppercase tracking-widest font-bold mb-1">Why isn't this Isobaric?</h3>
+                    <p class="text-[10px] md:text-xs text-slate-700 leading-tight">Here the pressure is <b class="text-red-600">not constant</b>! The downward force varies as the spring compresses. As Volume increases, Force increases, causing Pressure to rise.</p>
+                </div>
             </div>
 
         </div>
 
         <!-- Middle Controls -->
         <div class="w-full flex justify-between items-center px-4 md:px-8 pointer-events-none mt-auto mb-4">
-            <!-- Thermal & Action Buttons -->
-            <div class="pointer-events-auto flex gap-4" id="action-buttons-container">
+            <div class="pointer-events-auto flex gap-4 transition-opacity duration-500" id="action-buttons-container">
                 <button id="btn-heat" class="sketchy-btn bg-orange-50 flex flex-col items-center justify-center w-24 h-24 md:w-28 md:h-28 touch-none select-none">
                     <span class="text-3xl md:text-4xl mb-1 pointer-events-none">🔥</span>
                     <span class="text-orange-700 font-bold text-[10px] md:text-xs uppercase tracking-widest pointer-events-none">Add Heat</span>
                 </button>
-                
                 <button id="btn-cool" class="sketchy-btn bg-cyan-50 flex flex-col items-center justify-center w-24 h-24 md:w-28 md:h-28 touch-none select-none">
                     <span class="text-3xl md:text-4xl mb-1 pointer-events-none">❄️</span>
                     <span class="text-cyan-700 font-bold text-[10px] md:text-xs uppercase tracking-widest pointer-events-none">Add Ice</span>
                 </button>
-
                 <button id="btn-slam" class="sketchy-btn bg-purple-50 flex flex-col items-center justify-center w-24 h-24 md:w-28 md:h-28 touch-none select-none" style="display: none;">
                     <span class="text-3xl md:text-4xl mb-1 pointer-events-none">🔨</span>
                     <span class="text-purple-700 font-bold text-[10px] md:text-xs uppercase tracking-widest pointer-events-none text-center leading-tight">Slam<br>Piston</span>
                 </button>
+                <button id="btn-release" class="sketchy-btn bg-blue-50 flex flex-col items-center justify-center w-24 h-24 md:w-28 md:h-28 touch-none select-none" style="display: none;">
+                    <span class="text-3xl md:text-4xl mb-1 pointer-events-none">💨</span>
+                    <span class="text-blue-700 font-bold text-[10px] md:text-xs uppercase tracking-widest pointer-events-none text-center leading-tight">Release<br>Piston</span>
+                </button>
             </div>
         </div>
 
-        <!-- 3D Tracking Labels Layer -->
-        <div id="labels-container" class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden z-0">
-            <div id="label-w" class="absolute opacity-0 transition-opacity duration-300 transform -translate-y-1/2 flex items-center z-10">
-                <div class="w-0 h-0 border-t-[6px] border-b-[6px] border-r-[8px] border-t-transparent border-b-transparent transition-colors duration-300" id="arrow-w"></div>
-                <div class="sketchy-panel px-3 py-2 text-xs md:text-sm font-bold whitespace-nowrap ml-1 flex flex-col items-start" id="text-w"></div>
-            </div>
-            <div id="label-u" class="absolute opacity-0 transition-opacity duration-300 transform -translate-x-full -translate-y-1/2 flex items-center z-10">
-                <div class="sketchy-panel px-3 py-2 text-xs md:text-sm font-bold whitespace-nowrap mr-1 flex flex-col items-end" id="text-u"></div>
-                <div class="w-0 h-0 border-t-[6px] border-b-[6px] border-l-[8px] border-t-transparent border-b-transparent transition-colors duration-300" id="arrow-u"></div>
-            </div>
-            <div id="label-q" class="absolute opacity-0 transition-opacity duration-300 transform -translate-y-1/2 flex items-center z-10">
-                <div class="w-0 h-0 border-t-[6px] border-b-[6px] border-r-[8px] border-t-transparent border-b-transparent transition-colors duration-300" id="arrow-q"></div>
-                <div class="sketchy-panel px-3 py-2 text-xs md:text-sm font-bold whitespace-nowrap ml-1 flex flex-col items-start" id="text-q"></div>
-            </div>
+        <!-- 3D Tracking Labels -->
+        <div id="labels-container" class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden z-0 transition-opacity duration-500">
+            <div id="label-w" class="absolute opacity-0 transition-opacity duration-300 transform -translate-y-1/2 flex items-center z-10"><div class="w-0 h-0 border-t-[6px] border-b-[6px] border-r-[8px] border-t-transparent border-b-transparent transition-colors duration-300" id="arrow-w"></div><div class="sketchy-panel px-3 py-2 text-xs md:text-sm font-bold whitespace-nowrap ml-1 flex flex-col items-start" id="text-w"></div></div>
+            <div id="label-u" class="absolute opacity-0 transition-opacity duration-300 transform -translate-x-full -translate-y-1/2 flex items-center z-10"><div class="sketchy-panel px-3 py-2 text-xs md:text-sm font-bold whitespace-nowrap mr-1 flex flex-col items-end" id="text-u"></div><div class="w-0 h-0 border-t-[6px] border-b-[6px] border-l-[8px] border-t-transparent border-b-transparent transition-colors duration-300" id="arrow-u"></div></div>
+            <div id="label-q" class="absolute opacity-0 transition-opacity duration-300 transform -translate-y-1/2 flex items-center z-10"><div class="w-0 h-0 border-t-[6px] border-b-[6px] border-r-[8px] border-t-transparent border-b-transparent transition-colors duration-300" id="arrow-q"></div><div class="sketchy-panel px-3 py-2 text-xs md:text-sm font-bold whitespace-nowrap ml-1 flex flex-col items-start" id="text-q"></div></div>
         </div>
 
-        <!-- Dynamic Equation Panel (Bottom) -->
-        <div class="sketchy-panel px-8 py-5 pointer-events-auto flex flex-col items-center gap-1 mx-4 md:mx-auto md:min-w-[500px]" id="equation-panel">
+        <!-- Equation Panel -->
+        <div class="sketchy-panel px-8 py-5 pointer-events-auto flex flex-col items-center gap-1 mx-4 md:mx-auto md:min-w-[500px] transition-all duration-500 relative z-20" id="equation-panel">
             <div class="flex flex-wrap items-center justify-center gap-3 md:gap-5 text-3xl md:text-5xl lg:text-5xl font-black text-slate-800 py-1" id="equation-container">
-                <div id="term-q" class="eq-term text-orange-600 flex flex-col items-center">ΔQ</div>
+                <div id="term-q" class="eq-term text-orange-600 flex flex-col items-center">(ΔQ)</div>
                 <div id="sign-1" class="eq-term text-slate-800">=</div>
-                <div id="term-u" class="eq-term text-blue-600 flex flex-col items-center">ΔU</div>
+                <div id="term-u" class="eq-term text-blue-600 flex flex-col items-center">(ΔU)</div>
                 <div id="sign-2" class="eq-term text-slate-800">+</div>
-                <div id="term-w" class="eq-term text-green-600 flex flex-col items-center">ΔW</div>
+                <div id="term-w" class="eq-term text-green-600 flex flex-col items-center">(ΔW)</div>
             </div>
             <h3 class="text-slate-600 font-bold uppercase tracking-widest text-[10px] md:text-xs mt-2 transition-colors text-center" id="status-text">
                 System Status: Equilibrium
@@ -146,39 +151,35 @@
     </div>
 
     <script>
+        // --- GLOBAL VARIABLES ---
         let scene, camera, renderer, controls, effect;
         let pistonGroup, gasParticles, fireParticles, fireLight, iceMesh, iceLight;
         let insulationMesh, lockMeshes = [];
-        let pvCanvas, pvCtx;
-        let gradientTexture;
+        let springAssembly, springCoils, tissueMesh; 
+        let pvCanvas, pvCtx, gradientTexture, heatArrows; 
         
         // App State
         let currentMode = 'isobaric';
-        let isDragging = false;
-        let isHeating = false;
-        let isCooling = false;
-        let isSlamming = false;
+        let adiabaticViewMode = 'visual';
+        let currentState = 'idle';
+        let isDragging = false; let isHeating = false; let isCooling = false; let isSlamming = false; let isReleasing = false;
+        let isCombusting = false; let tissueBurnt = false; let combustionTimer = 0;
+        let heatFlowDir = 0; let heatFlowTime = 0;
         
-        // Simulation Constants
-        const CYLINDER_RADIUS = 4;
-        const MAX_HEIGHT = 14;
-        const MIN_HEIGHT = 3;
-        let currentPistonHeight = 8;
-        let targetPistonHeight = 8;
-        let internalTempCounter = 1.0; 
+        // Constants
+        const CYLINDER_RADIUS = 4; const MAX_HEIGHT = 14; const MIN_HEIGHT = 3; const CEILING_HEIGHT = MAX_HEIGHT + 6; 
+        let currentPistonHeight = 8; let targetPistonHeight = 8; let internalTempCounter = 1.0; 
 
+        // DOM Elements
         const statusText = document.getElementById('status-text');
         const eqPanel = document.getElementById('equation-panel');
-        const termQ = document.getElementById('term-q');
-        const sign1 = document.getElementById('sign-1');
-        const termU = document.getElementById('term-u');
-        const sign2 = document.getElementById('sign-2');
-        const termW = document.getElementById('term-w');
-        
-        const btnHeat = document.getElementById('btn-heat');
-        const btnCool = document.getElementById('btn-cool');
-        const btnSlam = document.getElementById('btn-slam');
+        const termQ = document.getElementById('term-q'); const termU = document.getElementById('term-u'); const termW = document.getElementById('term-w');
+        const sign1 = document.getElementById('sign-1'); const sign2 = document.getElementById('sign-2');
+        const btnHeat = document.getElementById('btn-heat'); const btnCool = document.getElementById('btn-cool');
+        const btnSlam = document.getElementById('btn-slam'); const btnRelease = document.getElementById('btn-release');
 
+
+        // --- MAIN INIT ---
         window.onload = function() {
             initThreeJS();
             initPVGraph();
@@ -190,9 +191,7 @@
         function initThreeJS() {
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
-            
-            // Set bright white background & fog
-            scene.background = new THREE.Color(0xf1f5f9); // slate-100
+            scene.background = new THREE.Color(0xf1f5f9); 
             scene.fog = new THREE.FogExp2(0xf1f5f9, 0.015);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -203,203 +202,112 @@
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             container.appendChild(renderer.domElement);
 
-            // Initialize Toon Outline Effect
-            effect = new THREE.OutlineEffect(renderer, {
-                defaultThickness: 0.008,
-                defaultColor: [0, 0, 0],
-                defaultAlpha: 0.8,
-                defaultKeepAlive: true
-            });
+            effect = new THREE.OutlineEffect(renderer, { defaultThickness: 0.008, defaultColor: [0, 0, 0], defaultAlpha: 0.8, defaultKeepAlive: true });
 
-            // Limited Viewport OrbitControls
             controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; 
-            controls.dampingFactor = 0.05;
-            controls.enablePan = false;
-            controls.minPolarAngle = Math.PI / 4; 
-            controls.maxPolarAngle = Math.PI / 2 - 0.05; 
-            controls.minDistance = 25; 
-            controls.maxDistance = 70; 
-            controls.target.set(0, 5, 0);
+            controls.enableDamping = true; controls.dampingFactor = 0.05; controls.enablePan = false;
+            controls.minPolarAngle = Math.PI / 4; controls.maxPolarAngle = Math.PI / 2 - 0.05; 
+            controls.minDistance = 25; controls.maxDistance = 70; controls.target.set(0, 5, 0);
 
-            // Brighter Lighting for the white scene
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-            scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            dirLight.position.set(10, 20, 10);
-            scene.add(dirLight);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(10, 20, 10); scene.add(dirLight);
 
-            // Setup Technical Grid
-            const gridHelper = new THREE.GridHelper(150, 75, 0x94a3b8, 0xcbd5e1);
-            gridHelper.position.y = -0.3; // Just below the base
-            scene.add(gridHelper);
+            const gridHelper = new THREE.GridHelper(150, 75, 0x94a3b8, 0xcbd5e1); gridHelper.position.y = -0.3; scene.add(gridHelper);
 
-            // Create Toon Gradient Texture for cel shading
-            const gradientCanvas = document.createElement('canvas');
-            gradientCanvas.width = 4; gradientCanvas.height = 1;
-            const gradientCtx = gradientCanvas.getContext('2d');
-            gradientCtx.fillStyle = '#404040'; gradientCtx.fillRect(0, 0, 1, 1);
-            gradientCtx.fillStyle = '#808080'; gradientCtx.fillRect(1, 0, 1, 1);
-            gradientCtx.fillStyle = '#c0c0c0'; gradientCtx.fillRect(2, 0, 1, 1);
-            gradientCtx.fillStyle = '#ffffff'; gradientCtx.fillRect(3, 0, 1, 1);
-            gradientTexture = new THREE.CanvasTexture(gradientCanvas);
-            gradientTexture.magFilter = THREE.NearestFilter;
-            gradientTexture.minFilter = THREE.NearestFilter;
+            const gradCanvas = document.createElement('canvas'); gradCanvas.width = 4; gradCanvas.height = 1;
+            const gradCtx = gradCanvas.getContext('2d');
+            gradCtx.fillStyle = '#404040'; gradCtx.fillRect(0,0,1,1); gradCtx.fillStyle = '#808080'; gradCtx.fillRect(1,0,1,1);
+            gradCtx.fillStyle = '#c0c0c0'; gradCtx.fillRect(2,0,1,1); gradCtx.fillStyle = '#ffffff'; gradCtx.fillRect(3,0,1,1);
+            gradientTexture = new THREE.CanvasTexture(gradCanvas); gradientTexture.magFilter = THREE.NearestFilter; gradientTexture.minFilter = THREE.NearestFilter;
 
-            // Cylinder (Lightened for white BG)
-            const cylinderGeo = new THREE.CylinderGeometry(CYLINDER_RADIUS, CYLINDER_RADIUS, MAX_HEIGHT, 32, 1, true);
-            const cylinderMat = new THREE.MeshToonMaterial({
-                color: 0xbae6fd, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false, gradientMap: gradientTexture
-            });
-            const glassContainer = new THREE.Mesh(cylinderGeo, cylinderMat);
-            glassContainer.position.y = MAX_HEIGHT / 2;
-            scene.add(glassContainer);
+            const cylGeo = new THREE.CylinderGeometry(CYLINDER_RADIUS, CYLINDER_RADIUS, MAX_HEIGHT, 32, 1, true);
+            const cylMat = new THREE.MeshToonMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false, gradientMap: gradientTexture });
+            const glass = new THREE.Mesh(cylGeo, cylMat); glass.position.y = MAX_HEIGHT / 2; scene.add(glass);
 
-            // Adiabatic Insulation
-            const insulationGeo = new THREE.CylinderGeometry(CYLINDER_RADIUS + 0.3, CYLINDER_RADIUS + 0.3, MAX_HEIGHT, 32, 1, true);
-            const insulationMat = new THREE.MeshToonMaterial({
-                color: 0xf97316, transparent: true, opacity: 0.6, side: THREE.DoubleSide, gradientMap: gradientTexture
-            });
-            insulationMesh = new THREE.Mesh(insulationGeo, insulationMat);
-            insulationMesh.position.y = MAX_HEIGHT / 2;
-            insulationMesh.visible = false;
-            scene.add(insulationMesh);
+            const insGeo = new THREE.CylinderGeometry(CYLINDER_RADIUS + 0.3, CYLINDER_RADIUS + 0.3, MAX_HEIGHT, 32, 1, true, Math.PI*0.35, Math.PI*1.3);
+            const insMat = new THREE.MeshToonMaterial({ color: 0xf97316, transparent: true, opacity: 0.6, side: THREE.DoubleSide, gradientMap: gradientTexture });
+            insulationMesh = new THREE.Mesh(insGeo, insMat); insulationMesh.position.y = MAX_HEIGHT / 2; insulationMesh.visible = false; scene.add(insulationMesh);
 
-            // Base
-            const baseGeo = new THREE.CylinderGeometry(CYLINDER_RADIUS + 0.5, CYLINDER_RADIUS + 0.5, 0.5, 32);
-            const baseMat = new THREE.MeshToonMaterial({ color: 0x334155, gradientMap: gradientTexture });
-            const base = new THREE.Mesh(baseGeo, baseMat);
-            base.position.y = -0.25;
-            scene.add(base);
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(CYLINDER_RADIUS+0.5, CYLINDER_RADIUS+0.5, 0.5, 32), new THREE.MeshToonMaterial({ color: 0x334155, gradientMap: gradientTexture }));
+            base.position.y = -0.25; scene.add(base);
 
-            // Piston Assembly
+            // General Spring
+            springAssembly = new THREE.Group();
+            const ceiling = new THREE.Mesh(new THREE.BoxGeometry(CYLINDER_RADIUS*2, 0.5, 2), new THREE.MeshToonMaterial({ color: 0x475569, gradientMap: gradientTexture }));
+            ceiling.position.y = CEILING_HEIGHT; springAssembly.add(ceiling);
+            springCoils = new THREE.Group();
+            const coilMat = new THREE.MeshToonMaterial({ color: 0x94a3b8, gradientMap: gradientTexture });
+            for(let i=0; i<7; i++) { let coil = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.25, 8, 24), coilMat); coil.rotation.x = Math.PI/2; coil.position.y = i; springCoils.add(coil); }
+            springAssembly.add(springCoils); springAssembly.visible = false; scene.add(springAssembly);
+
+            // Tissue
+            tissueMesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.6, 0), new THREE.MeshToonMaterial({ color: 0xfdf8f5, gradientMap: gradientTexture }));
+            tissueMesh.position.set(0, 0.3, 0); tissueMesh.scale.set(1, 0.3, 1); tissueMesh.visible = false; scene.add(tissueMesh);
+
+            // Piston
             pistonGroup = new THREE.Group();
-            const pistonGeo = new THREE.CylinderGeometry(CYLINDER_RADIUS - 0.1, CYLINDER_RADIUS - 0.1, 0.8, 32);
-            const pistonMat = new THREE.MeshToonMaterial({ color: 0x94a3b8, gradientMap: gradientTexture });
-            const piston = new THREE.Mesh(pistonGeo, pistonMat);
-            pistonGroup.add(piston);
-
-            const rodGeo = new THREE.CylinderGeometry(0.5, 0.5, 12, 16);
-            const rod = new THREE.Mesh(rodGeo, pistonMat);
-            rod.position.y = 6;
-            pistonGroup.add(rod);
-
-            const handleGeo = new THREE.TorusGeometry(1.5, 0.4, 16, 32);
-            const handle = new THREE.Mesh(handleGeo, pistonMat);
-            handle.position.y = 12;
-            handle.rotation.y = Math.PI / 2;
-            pistonGroup.add(handle);
-
-            // Isochoric Volume Locks
+            const pMat = new THREE.MeshToonMaterial({ color: 0x94a3b8, gradientMap: gradientTexture });
+            pistonGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(CYLINDER_RADIUS-0.1, CYLINDER_RADIUS-0.1, 0.8, 32), pMat));
+            let rod = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 12, 16), pMat); rod.position.y = 6; pistonGroup.add(rod);
+            let handle = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.4, 16, 32), pMat); handle.position.y = 12; handle.rotation.y = Math.PI/2; pistonGroup.add(handle);
+            
             for(let i=0; i<4; i++) {
-                const lockGeo = new THREE.BoxGeometry(1.5, 0.5, 1.5);
-                const lockMat = new THREE.MeshToonMaterial({ color: 0xef4444, gradientMap: gradientTexture });
-                const lock = new THREE.Mesh(lockGeo, lockMat);
-                lock.position.y = 0.4;
-                lock.position.x = Math.cos(i * Math.PI/2) * (CYLINDER_RADIUS - 0.5);
-                lock.position.z = Math.sin(i * Math.PI/2) * (CYLINDER_RADIUS - 0.5);
-                lock.visible = false;
-                pistonGroup.add(lock);
-                lockMeshes.push(lock);
+                let lock = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 1.5), new THREE.MeshToonMaterial({ color: 0xef4444, gradientMap: gradientTexture }));
+                lock.position.set(Math.cos(i*Math.PI/2)*(CYLINDER_RADIUS-0.5), 0.4, Math.sin(i*Math.PI/2)*(CYLINDER_RADIUS-0.5));
+                lock.visible = false; pistonGroup.add(lock); lockMeshes.push(lock);
             }
+            pistonGroup.position.y = currentPistonHeight; scene.add(pistonGroup);
 
-            pistonGroup.position.y = currentPistonHeight;
-            scene.add(pistonGroup);
-
-            setupGasParticles();
-            setupThermalVisuals();
-
+            setupGasParticles(); setupThermalVisuals(); setupHeatArrows(); 
             window.addEventListener('resize', onWindowResize, false);
         }
 
         function setupGasParticles() {
-            const particleCount = 600;
-            const particleGeo = new THREE.BufferGeometry();
-            const particlePos = new Float32Array(particleCount * 3);
-            const particleVels = [];
-
+            const particleCount = 600; const particlePos = new Float32Array(particleCount * 3); const particleVels = [];
             for(let i = 0; i < particleCount; i++) {
-                particlePos[i*3] = (Math.random() - 0.5) * (CYLINDER_RADIUS * 1.5);
-                particlePos[i*3+1] = Math.random() * currentPistonHeight;
-                particlePos[i*3+2] = (Math.random() - 0.5) * (CYLINDER_RADIUS * 1.5);
-                particleVels.push({ x: (Math.random() - 0.5)*0.3, y: (Math.random() - 0.5)*0.3, z: (Math.random() - 0.5)*0.3 });
+                particlePos[i*3] = (Math.random()-0.5)*(CYLINDER_RADIUS*1.5); particlePos[i*3+1] = Math.random()*currentPistonHeight; particlePos[i*3+2] = (Math.random()-0.5)*(CYLINDER_RADIUS*1.5);
+                particleVels.push({ x: (Math.random()-0.5)*0.3, y: (Math.random()-0.5)*0.3, z: (Math.random()-0.5)*0.3 });
             }
-
-            particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
-            
-            const circleCanvas = document.createElement('canvas');
-            circleCanvas.width = 32; circleCanvas.height = 32;
-            const context = circleCanvas.getContext('2d');
-            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
-            gradient.addColorStop(0, 'rgba(255,255,255,1)');
-            gradient.addColorStop(0.5, 'rgba(255,255,255,0.8)');
-            gradient.addColorStop(1, 'rgba(255,255,255,0)');
-            context.fillStyle = gradient;
-            context.fillRect(0,0,32,32);
-            
-            // Removed AdditiveBlending so it shows up on white background
-            const pMat = new THREE.PointsMaterial({
-                color: 0xff4400, size: 0.8, map: new THREE.CanvasTexture(circleCanvas), transparent: true, opacity: 0.8, depthWrite: false, depthTest: true
-            });
-            gasParticles = new THREE.Points(particleGeo, pMat);
-            gasParticles.userData.velocities = particleVels;
-            gasParticles.frustumCulled = false; 
-            scene.add(gasParticles);
+            const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+            const cCanvas = document.createElement('canvas'); cCanvas.width = 32; cCanvas.height = 32;
+            const ctx = cCanvas.getContext('2d'); const grad = ctx.createRadialGradient(16,16,0,16,16,16);
+            grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.5, 'rgba(255,255,255,0.8)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = grad; ctx.fillRect(0,0,32,32);
+            gasParticles = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0xff4400, size: 0.8, map: new THREE.CanvasTexture(cCanvas), transparent: true, opacity: 0.8, depthWrite: false, depthTest: true }));
+            gasParticles.userData.velocities = particleVels; gasParticles.frustumCulled = false; scene.add(gasParticles);
         }
 
         function setupThermalVisuals() {
-            // Fire
-            const fireGeo = new THREE.BufferGeometry();
-            const firePos = new Float32Array(200 * 3);
-            for(let i=0; i<200; i++) {
-                firePos[i*3] = (Math.random() - 0.5) * 6;
-                firePos[i*3+1] = -3 + Math.random() * 2.5; 
-                firePos[i*3+2] = (Math.random() - 0.5) * 6;
+            const fGeo = new THREE.BufferGeometry(); const fPos = new Float32Array(200*3);
+            for(let i=0; i<200; i++) { fPos[i*3] = (Math.random()-0.5)*6; fPos[i*3+1] = -3 + Math.random()*2.5; fPos[i*3+2] = (Math.random()-0.5)*6; }
+            fGeo.setAttribute('position', new THREE.BufferAttribute(fPos, 3));
+            fireParticles = new THREE.Points(fGeo, new THREE.PointsMaterial({ color: 0xff8800, size: 1.2, transparent: true, opacity: 0, depthWrite: false })); fireParticles.frustumCulled = false; scene.add(fireParticles);
+            fireLight = new THREE.PointLight(0xff5500, 0, 20); fireLight.position.set(0, -1, 0); scene.add(fireLight);
+
+            const iGeo = new THREE.CylinderGeometry(CYLINDER_RADIUS+0.2, CYLINDER_RADIUS+1, 2, 8);
+            iceMesh = new THREE.Mesh(iGeo, new THREE.MeshToonMaterial({ color: 0x00ffff, transparent: true, opacity: 0, depthWrite: false, gradientMap: gradientTexture })); iceMesh.position.y = -3; scene.add(iceMesh);
+            iceLight = new THREE.PointLight(0x00aaff, 0, 20); iceLight.position.set(0, -1, 0); scene.add(iceLight);
+        }
+
+        function setupHeatArrows() {
+            heatArrows = new THREE.Group(); scene.add(heatArrows);
+            for(let i=0; i<8; i++) {
+                let arrow = new THREE.Group();
+                let shaft = new THREE.CylinderGeometry(0.15, 0.15, 1.5, 8); shaft.rotateX(Math.PI/2); shaft.translate(0,0,-0.5);
+                let head = new THREE.ConeGeometry(0.5, 1, 8); head.rotateX(Math.PI/2); head.translate(0,0,0.75);
+                let mat = new THREE.MeshToonMaterial({ color: 0xf97316, gradientMap: gradientTexture, transparent: true, opacity: 0, depthWrite: false });
+                arrow.add(new THREE.Mesh(shaft, mat)); arrow.add(new THREE.Mesh(head, mat)); arrow.userData = { angle: (i*Math.PI)/4, mat: mat }; heatArrows.add(arrow);
             }
-            fireGeo.setAttribute('position', new THREE.BufferAttribute(firePos, 3));
-            // Standard blending for visibility on white background
-            fireParticles = new THREE.Points(fireGeo, new THREE.PointsMaterial({
-                color: 0xff8800, size: 1.2, transparent: true, opacity: 0, depthWrite: false
-            }));
-            fireParticles.frustumCulled = false;
-            scene.add(fireParticles);
-            
-            fireLight = new THREE.PointLight(0xff5500, 0, 20);
-            fireLight.position.set(0, -1, 0);
-            scene.add(fireLight);
-
-            // Ice
-            const iceGeo = new THREE.CylinderGeometry(CYLINDER_RADIUS+0.2, CYLINDER_RADIUS+1, 2, 8);
-            const iceMat = new THREE.MeshToonMaterial({
-                color: 0x00ffff, transparent: true, opacity: 0, depthWrite: false, gradientMap: gradientTexture
-            });
-            iceMesh = new THREE.Mesh(iceGeo, iceMat);
-            iceMesh.position.y = -3;
-            scene.add(iceMesh);
-
-            iceLight = new THREE.PointLight(0x00aaff, 0, 20);
-            iceLight.position.set(0, -1, 0);
-            scene.add(iceLight);
+            heatArrows.position.y = 2; heatArrows.visible = false;
         }
 
         function initPVGraph() {
-            pvCanvas = document.getElementById('pv-canvas');
-            pvCtx = pvCanvas.getContext('2d');
-            const rect = pvCanvas.getBoundingClientRect();
-            pvCanvas.width = rect.width * 2;
-            pvCanvas.height = rect.height * 2;
-            pvCtx.scale(2,2);
+            pvCanvas = document.getElementById('pv-canvas'); pvCtx = pvCanvas.getContext('2d');
         }
 
-        // Mode Switching Logic
         window.setMode = function(mode) {
-            currentMode = mode;
-            isDragging = false;
-            isHeating = false;
-            isCooling = false;
-            isSlamming = false;
-            internalTempCounter = 1.0; 
-            targetPistonHeight = 8;
+            currentMode = mode; isDragging = false; isHeating = false; isCooling = false; isSlamming = false; isReleasing = false; isCombusting = false;
+            internalTempCounter = 1.0; targetPistonHeight = 8;
             
             document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById(`btn-mode-${mode}`).classList.add('active');
@@ -407,74 +315,70 @@
             btnHeat.style.display = (mode === 'adiabatic') ? 'none' : 'flex';
             btnCool.style.display = (mode === 'adiabatic') ? 'none' : 'flex';
             btnSlam.style.display = (mode === 'adiabatic') ? 'flex' : 'none';
+            btnRelease.style.display = (mode === 'adiabatic') ? 'flex' : 'none';
             
             insulationMesh.visible = (mode === 'adiabatic');
             lockMeshes.forEach(m => m.visible = (mode === 'isochoric'));
+            springAssembly.visible = (mode === 'general');
+            
+            const adiaTabs = document.getElementById('adiabatic-tabs');
+            if (mode === 'adiabatic') { adiaTabs.style.display = 'flex'; adiaTabs.classList.remove('animate-pop-in'); void adiaTabs.offsetWidth; adiaTabs.classList.add('animate-pop-in'); } 
+            else { adiaTabs.style.display = 'none'; }
 
+            const genInfo = document.getElementById('general-info');
+            if (mode === 'general') { genInfo.style.display = 'flex'; genInfo.classList.remove('animate-pop-in'); void genInfo.offsetWidth; genInfo.classList.add('animate-pop-in'); } 
+            else { genInfo.style.display = 'none'; }
+            
+            if (mode !== 'adiabatic') setAdiabaticMode('visual'); 
+
+            updateEquationUI('idle'); drawPVGraph();
+        };
+
+        window.setAdiabaticMode = function(viewMode) {
+            adiabaticViewMode = viewMode;
+            document.getElementById('btn-adia-visual').classList.remove('active'); document.getElementById('btn-adia-experimental').classList.remove('active');
+            document.getElementById(`btn-adia-${viewMode}`).classList.add('active');
+
+            if (viewMode === 'experimental') { tissueMesh.visible = true; tissueBurnt = false; tissueMesh.material.color.setHex(0xfdf8f5); } 
+            else { tissueMesh.visible = false; isCombusting = false; }
             updateEquationUI('idle');
-            drawPVGraph();
         };
 
         function setupInteractions() {
-            btnHeat.addEventListener('pointerdown', () => { 
-                if (btnHeat.style.display === 'none') return;
-                isHeating = true; updateEquationUI('heating'); 
-            });
-            window.addEventListener('pointerup', () => { 
-                if(isHeating) { isHeating = false; setTimeout(() => { if(!isDragging && !isCooling) updateEquationUI('idle'); }, 500); }
-            });
+            btnHeat.addEventListener('pointerdown', () => { if (btnHeat.style.display==='none') return; isHeating = true; updateEquationUI('heating'); });
+            window.addEventListener('pointerup', () => { if(isHeating) { isHeating = false; setTimeout(() => { if(!isDragging && !isCooling) updateEquationUI('idle'); }, 500); } });
 
-            btnCool.addEventListener('pointerdown', () => { 
-                if (btnCool.style.display === 'none') return;
-                isCooling = true; updateEquationUI('cooling'); 
-            });
-            window.addEventListener('pointerup', () => { 
-                if(isCooling) { isCooling = false; setTimeout(() => { if(!isDragging && !isHeating) updateEquationUI('idle'); }, 500); }
-            });
+            btnCool.addEventListener('pointerdown', () => { if (btnCool.style.display==='none') return; isCooling = true; updateEquationUI('cooling'); });
+            window.addEventListener('pointerup', () => { if(isCooling) { isCooling = false; setTimeout(() => { if(!isDragging && !isHeating) updateEquationUI('idle'); }, 500); } });
 
-            btnSlam.addEventListener('pointerdown', () => {
-                if (btnSlam.style.display === 'none') return;
-                isSlamming = true;
-                targetPistonHeight = MIN_HEIGHT + 1; 
-                updateEquationUI('slamming');
-            });
-            window.addEventListener('pointerup', () => {
-                if(isSlamming) { isSlamming = false; setTimeout(() => { if(!isDragging) updateEquationUI('idle'); }, 1000); }
-            });
+            btnSlam.addEventListener('pointerdown', () => { if (btnSlam.style.display==='none') return; isSlamming = true; targetPistonHeight = MIN_HEIGHT + 0.5; updateEquationUI('slamming'); });
+            window.addEventListener('pointerup', () => { if(isSlamming) { isSlamming = false; setTimeout(() => { if(!isDragging) updateEquationUI('idle'); }, 1000); } });
 
-            const raycaster = new THREE.Raycaster();
-            const mouse = new THREE.Vector2();
-            let dragPlane = new THREE.Plane();
-            let offset = new THREE.Vector3();
+            btnRelease.addEventListener('pointerdown', () => { if (btnRelease.style.display==='none') return; isReleasing = true; targetPistonHeight = MAX_HEIGHT - 1; updateEquationUI('releasing'); });
+            window.addEventListener('pointerup', () => { if(isReleasing) { isReleasing = false; setTimeout(() => { if(!isDragging) updateEquationUI('idle'); }, 1000); } });
+
+            const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2(); let dragPlane = new THREE.Plane(); let offset = new THREE.Vector3();
 
             window.addEventListener('pointerdown', (e) => {
-                if(e.target !== renderer.domElement || currentMode === 'isochoric' || isSlamming) return;
-                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-
+                if(e.target !== renderer.domElement || currentMode === 'isochoric' || isSlamming || isReleasing) return;
+                mouse.x = (e.clientX/window.innerWidth)*2-1; mouse.y = -(e.clientY/window.innerHeight)*2+1;
                 raycaster.setFromCamera(mouse, camera);
                 if (raycaster.intersectObject(pistonGroup, true).length > 0) {
                     isDragging = true; controls.enabled = false; document.body.style.cursor = 'grabbing';
-                    const cameraDir = new THREE.Vector3();
-                    camera.getWorldDirection(cameraDir);
-                    dragPlane.setFromNormalAndCoplanarPoint(cameraDir.negate(), pistonGroup.position);
-                    raycaster.ray.intersectPlane(dragPlane, offset);
-                    offset.sub(pistonGroup.position);
+                    const cDir = new THREE.Vector3(); camera.getWorldDirection(cDir);
+                    dragPlane.setFromNormalAndCoplanarPoint(cDir.negate(), pistonGroup.position);
+                    raycaster.ray.intersectPlane(dragPlane, offset); offset.sub(pistonGroup.position);
                 }
             });
 
             window.addEventListener('pointermove', (e) => {
                 if (!isDragging) return;
-                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-                raycaster.setFromCamera(mouse, camera);
-                const point = new THREE.Vector3();
-                if(raycaster.ray.intersectPlane(dragPlane, point)) {
-                    const newY = point.y - offset.y;
-                    if (newY < currentPistonHeight - 0.1) updateEquationUI('compressing');
-                    else if (newY > currentPistonHeight + 0.1) updateEquationUI('expanding_drag');
-                    targetPistonHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, newY));
-                    currentPistonHeight = targetPistonHeight; 
+                mouse.x = (e.clientX/window.innerWidth)*2-1; mouse.y = -(e.clientY/window.innerHeight)*2+1;
+                raycaster.setFromCamera(mouse, camera); const pt = new THREE.Vector3();
+                if(raycaster.ray.intersectPlane(dragPlane, pt)) {
+                    const nY = pt.y - offset.y;
+                    if (nY < currentPistonHeight-0.1) updateEquationUI('compressing'); else if (nY > currentPistonHeight+0.1) updateEquationUI('expanding_drag');
+                    targetPistonHeight = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, nY)); currentPistonHeight = targetPistonHeight; 
                 }
             });
 
@@ -487,365 +391,352 @@
         }
 
         function setLabel(type, textHTML, colorHex, show) {
-            const el = document.getElementById(`label-${type}`);
-            const textEl = document.getElementById(`text-${type}`);
-            const arrowEl = document.getElementById(`arrow-${type}`);
+            const el = document.getElementById(`label-${type}`); const textEl = document.getElementById(`text-${type}`); const arrowEl = document.getElementById(`arrow-${type}`);
             if (!show) { el.style.opacity = '0'; return; }
-            
-            el.style.opacity = '1';
-            textEl.innerHTML = textHTML; 
-            textEl.style.borderColor = colorHex; // Tint sketchy border
-            textEl.style.color = '#0f172a'; // Ensure text is dark and readable
-            textEl.style.boxShadow = `4px 4px 0px ${colorHex}`; // Tint sketchy shadow
-            
-            if(type === 'u') arrowEl.style.borderLeftColor = colorHex;
-            else arrowEl.style.borderRightColor = colorHex;
+            el.style.opacity = '1'; textEl.innerHTML = textHTML; textEl.style.borderColor = colorHex; textEl.style.color = '#0f172a'; textEl.style.boxShadow = `4px 4px 0px ${colorHex}`; 
+            if(type === 'u') arrowEl.style.borderLeftColor = colorHex; else arrowEl.style.borderRightColor = colorHex;
         }
 
         function formatTerm(text, isZero, signOverride = '') {
-            if(isZero) return `<span class="line-through opacity-40">${text}</span><span class="block text-[10px] md:text-xs text-slate-500 font-normal opacity-80">= 0</span>`;
-            if(signOverride) return `<span class="font-black">${signOverride}${text}</span>`;
-            return text;
+            if(isZero) return `<span class="line-through opacity-40">(${text})</span><span class="block text-[10px] md:text-xs text-slate-500 font-normal opacity-80">= 0</span>`;
+            if(signOverride) return `<span class="font-black">(${signOverride}${text})</span>`;
+            return `(${text})`;
         }
 
-        let currentState = 'idle';
         function updateEquationUI(state) {
-            if (currentState === state) return;
-            currentState = state;
+            if (currentState === state) return; currentState = state;
+            heatFlowDir = 0;
+            if (currentMode === 'isobaric' || currentMode === 'isothermal' || currentMode === 'general') {
+                if (state==='heating' || state==='expanding_drag') heatFlowDir = 1; else if (state==='cooling' || state==='compressing') heatFlowDir = -1;
+            } else if (currentMode === 'isochoric') {
+                if (state==='heating') heatFlowDir = 1; else if (state==='cooling') heatFlowDir = -1;
+            }
 
-            eqPanel.className = "sketchy-panel px-6 md:px-8 py-4 pointer-events-auto flex flex-col items-center gap-1 mx-4 md:mx-auto md:min-w-[500px]";
-            termQ.className = "eq-term text-orange-600 flex flex-col items-center";
-            termU.className = "eq-term text-blue-600 flex flex-col items-center";
-            termW.className = "eq-term text-green-600 flex flex-col items-center";
-            
-            termQ.innerHTML = formatTerm('ΔQ', currentMode === 'adiabatic');
-            termU.innerHTML = formatTerm('ΔU', currentMode === 'isothermal');
-            termW.innerHTML = formatTerm('ΔW', currentMode === 'isochoric');
+            eqPanel.className = "sketchy-panel px-6 md:px-8 py-4 pointer-events-auto flex flex-col items-center gap-1 mx-4 md:mx-auto md:min-w-[500px] relative z-20";
+            termQ.className = "eq-term text-orange-600 flex flex-col items-center"; termU.className = "eq-term text-blue-600 flex flex-col items-center"; termW.className = "eq-term text-green-600 flex flex-col items-center";
+            termQ.innerHTML = formatTerm('ΔQ', currentMode === 'adiabatic'); termU.innerHTML = formatTerm('ΔU', currentMode === 'isothermal'); termW.innerHTML = formatTerm('ΔW', currentMode === 'isochoric');
             sign1.innerText = "="; sign2.innerText = "+";
 
-            const setPanelColor = (color) => {
-                eqPanel.style.borderColor = color;
-                eqPanel.style.boxShadow = `6px 6px 0px ${color}`;
-            };
+            const setPanelColor = (color) => { eqPanel.style.borderColor = color; eqPanel.style.boxShadow = `6px 6px 0px ${color}`; };
 
             if (state === 'idle') {
-                setPanelColor('#1e293b');
-                statusText.innerText = `System Status: Equilibrium (${currentMode.toUpperCase()})`;
-                setLabel('q', '', '', false); setLabel('u', '', '', false); setLabel('w', '', '', false);
-                return;
+                setPanelColor('#1e293b'); statusText.innerText = `System Status: Equilibrium (${currentMode.toUpperCase()})`;
+                setLabel('q', '', '', false); setLabel('u', '', '', false); setLabel('w', '', '', false); return;
             }
 
             if (currentMode === 'isobaric') {
                 if (state === 'heating') {
-                    setPanelColor('#f97316');
-                    statusText.innerText = "Heating: All components expand/increase (+)";
+                    setPanelColor('#f97316'); statusText.innerText = "Heating: All components expand/increase (+)";
                     termQ.innerHTML = formatTerm('ΔQ', false, '+'); termU.innerHTML = formatTerm('ΔU', false, '+'); termW.innerHTML = formatTerm('ΔW', false, '+');
                     termQ.className += " scale-110 text-orange-600"; termU.className += " text-red-600"; termW.className += " text-green-600";
-                    setLabel('q', '🔥 Heat in (+ΔQ)', '#f97316', true);
-                    setLabel('u', '📈 Energy rises (+ΔU)', '#ef4444', true);
-                    setLabel('w', '⬆️ Volume expands (+ΔW)', '#22c55e', true);
+                    setLabel('q', '🔥 Heat in (+ΔQ)', '#f97316', true); setLabel('u', '📈 Energy rises (+ΔU)', '#ef4444', true); setLabel('w', '⬆️ Volume expands (+ΔW)', '#22c55e', true);
                 } else if (state === 'cooling') {
-                    setPanelColor('#06b6d4');
-                    statusText.innerText = "Cooling: All components contract/decrease (-)";
+                    setPanelColor('#06b6d4'); statusText.innerText = "Cooling: All components contract/decrease (-)";
                     termQ.innerHTML = formatTerm('ΔQ', false, '-'); termU.innerHTML = formatTerm('ΔU', false, '-'); termW.innerHTML = formatTerm('ΔW', false, '-');
                     termQ.className += " scale-110 text-cyan-600"; termU.className += " text-blue-600"; termW.className += " text-slate-500";
-                    setLabel('q', '❄️ Heat out (-ΔQ)', '#06b6d4', true);
-                    setLabel('u', '📉 Energy drops (-ΔU)', '#3b82f6', true);
-                    setLabel('w', '⬇️ Volume shrinks (-ΔW)', '#64748b', true);
+                    setLabel('q', '❄️ Heat out (-ΔQ)', '#06b6d4', true); setLabel('u', '📉 Energy drops (-ΔU)', '#3b82f6', true); setLabel('w', '⬇️ Volume shrinks (-ΔW)', '#64748b', true);
                 } else if (state === 'compressing') {
-                    setPanelColor('#ef4444');
-                    statusText.innerText = "Work done ON gas converts to Internal Energy";
-                    termW.className += " text-red-600 scale-110"; termU.className += " text-red-600 scale-110"; termQ.className += " opacity-40";
-                    setLabel('w', '⬇️ Piston pushed DOWN', '#ef4444', true);
-                    setLabel('u', '📈 Energy INCREASES', '#ef4444', true);
-                    setLabel('q', '', '', false);
+                    setPanelColor('#06b6d4'); statusText.innerText = "To keep Pressure constant, Heat MUST flow OUT (-)";
+                    termQ.innerHTML = formatTerm('ΔQ', false, '-'); termU.innerHTML = formatTerm('ΔU', false, '-'); termW.innerHTML = formatTerm('ΔW', false, '-');
+                    termQ.className += " scale-110 text-cyan-600"; termU.className += " text-blue-600 scale-110"; termW.className += " text-slate-500 scale-110";
+                    setLabel('w', '⬇️ Volume shrinks (-ΔW)', '#64748b', true); setLabel('u', '📉 Temp must drop (-ΔU)', '#3b82f6', true); setLabel('q', '➡️ Heat expelled (-ΔQ)', '#06b6d4', true);
                 } else if (state === 'expanding_drag') {
-                    setPanelColor('#3b82f6');
-                    statusText.innerText = "Gas uses energy to expand";
-                    termW.className += " scale-110 text-green-600"; termU.className += " text-blue-600 scale-110"; termQ.className += " opacity-40";
-                    setLabel('w', '⬆️ Piston moves UP', '#22c55e', true);
-                    setLabel('u', '📉 Temp drops to fuel work', '#3b82f6', true);
-                    setLabel('q', '', '', false);
+                    setPanelColor('#f97316'); statusText.innerText = "To keep Pressure constant, Heat MUST flow IN (+)";
+                    termQ.innerHTML = formatTerm('ΔQ', false, '+'); termU.innerHTML = formatTerm('ΔU', false, '+'); termW.innerHTML = formatTerm('ΔW', false, '+');
+                    termW.className += " scale-110 text-green-600"; termU.className += " text-red-600 scale-110"; termQ.className += " text-orange-600 scale-110";
+                    setLabel('w', '⬆️ Volume expands (+ΔW)', '#22c55e', true); setLabel('u', '📈 Temp must rise (+ΔU)', '#ef4444', true); setLabel('q', '⬅️ Heat sucked in (+ΔQ)', '#f97316', true);
                 }
             } 
-            
             else if (currentMode === 'isochoric') { 
                 if (state === 'heating') {
-                    setPanelColor('#ef4444');
-                    statusText.innerText = "All Heat goes directly to Internal Energy";
+                    setPanelColor('#ef4444'); statusText.innerText = "All Heat goes directly to Internal Energy";
                     termQ.className += " scale-110 text-orange-600"; termU.className += " text-red-600 scale-110";
-                    setLabel('q', '🔥 Heat transfers into gas', '#f97316', true);
-                    setLabel('u', '💥 Temp skyrockets (no expansion)', '#ef4444', true);
-                    setLabel('w', '❌ Volume locked', '#64748b', true);
+                    setLabel('q', '🔥 Heat transfers into gas', '#f97316', true); setLabel('u', '💥 Temp skyrockets (no expansion)', '#ef4444', true); setLabel('w', '❌ Volume locked', '#64748b', true);
                 } else if (state === 'cooling') {
-                    setPanelColor('#06b6d4');
-                    statusText.innerText = "Internal Energy drops as heat leaves";
+                    setPanelColor('#06b6d4'); statusText.innerText = "Internal Energy drops as heat leaves";
                     termQ.className += " scale-110 text-cyan-600"; termU.className += " text-blue-600 scale-110";
-                    setLabel('q', '❄️ Heat leaves gas', '#06b6d4', true);
-                    setLabel('u', '🥶 Temp drops rapidly', '#3b82f6', true);
-                    setLabel('w', '❌ Volume locked', '#64748b', true);
+                    setLabel('q', '❄️ Heat leaves gas', '#06b6d4', true); setLabel('u', '🥶 Temp drops rapidly', '#3b82f6', true); setLabel('w', '❌ Volume locked', '#64748b', true);
                 }
             }
-
             else if (currentMode === 'isothermal') { 
                 if (state === 'heating') {
-                    setPanelColor('#22c55e');
-                    statusText.innerText = "Heat (+Q) perfectly converts to Work BY Gas (+W)";
+                    setPanelColor('#22c55e'); statusText.innerText = "Heat (+Q) perfectly converts to Work BY Gas (+W)";
                     termQ.innerHTML = formatTerm('ΔQ', false, '+'); termW.innerHTML = formatTerm('ΔW', false, '+');
                     termQ.className += " scale-110 text-orange-600"; termW.className += " scale-110 text-green-600";
-                    setLabel('q', '🔥 Heat added IN', '#f97316', true);
-                    setLabel('u', '🌡️ Temp locked (ΔU=0)', '#3b82f6', true);
-                    setLabel('w', '⬆️ Perfect expansion', '#22c55e', true);
+                    setLabel('q', '🔥 Heat added IN', '#f97316', true); setLabel('u', '🌡️ Temp locked (ΔU=0)', '#3b82f6', true); setLabel('w', '⬆️ Perfect expansion', '#22c55e', true);
                 } else if (state === 'cooling') {
-                    setPanelColor('#06b6d4');
-                    statusText.innerText = "Work ON Gas (-W) perfectly expels Heat (-Q)";
+                    setPanelColor('#06b6d4'); statusText.innerText = "Work ON Gas (-W) perfectly expels Heat (-Q)";
                     termQ.innerHTML = formatTerm('ΔQ', false, '-'); termW.innerHTML = formatTerm('ΔW', false, '-');
                     termQ.className += " scale-110 text-cyan-600"; termW.className += " scale-110 text-slate-500";
-                    setLabel('q', '❄️ Heat flows OUT', '#06b6d4', true);
-                    setLabel('u', '🌡️ Temp locked (ΔU=0)', '#3b82f6', true);
-                    setLabel('w', '⬇️ Atmosphere compresses', '#64748b', true);
+                    setLabel('q', '❄️ Heat flows OUT', '#06b6d4', true); setLabel('u', '🌡️ Temp locked (ΔU=0)', '#3b82f6', true); setLabel('w', '⬇️ Atmosphere compresses', '#64748b', true);
                 } else if (state === 'compressing') {
-                    setPanelColor('#06b6d4');
-                    statusText.innerText = "Work done ON gas directly expels Heat OUT";
+                    setPanelColor('#06b6d4'); statusText.innerText = "Work done ON gas directly expels Heat OUT";
                     termQ.innerHTML = formatTerm('ΔQ', false, '-'); termW.innerHTML = formatTerm('ΔW', false, '-');
                     termW.className += " scale-110 text-slate-500"; termQ.className += " scale-110 text-cyan-600";
-                    setLabel('w', '⬇️ You do Work ON gas (-W)', '#64748b', true);
-                    setLabel('u', '🌡️ Temp locked (ΔU=0)', '#3b82f6', true);
-                    setLabel('q', '➡️ Heat expelled OUT (-Q)', '#06b6d4', true);
+                    setLabel('w', '⬇️ You do Work ON gas (-W)', '#64748b', true); setLabel('u', '🌡️ Temp locked (ΔU=0)', '#3b82f6', true); setLabel('q', '➡️ Heat expelled OUT (-Q)', '#06b6d4', true);
                 } else if (state === 'expanding_drag') {
-                    setPanelColor('#f97316');
-                    statusText.innerText = "Gas expanding MUST suck Heat IN to not cool down";
+                    setPanelColor('#f97316'); statusText.innerText = "Gas expanding MUST suck Heat IN to not cool down";
                     termQ.innerHTML = formatTerm('ΔQ', false, '+'); termW.innerHTML = formatTerm('ΔW', false, '+');
                     termW.className += " scale-110 text-green-600"; termQ.className += " scale-110 text-orange-600";
-                    setLabel('w', '⬆️ Gas does Work (+W)', '#22c55e', true);
-                    setLabel('u', '🌡️ Temp locked (ΔU=0)', '#3b82f6', true);
-                    setLabel('q', '⬅️ Heat sucked IN (+Q)', '#f97316', true);
+                    setLabel('w', '⬆️ Gas does Work (+W)', '#22c55e', true); setLabel('u', '🌡️ Temp locked (ΔU=0)', '#3b82f6', true); setLabel('q', '⬅️ Heat sucked IN (+Q)', '#f97316', true);
                 }
             }
-
             else if (currentMode === 'adiabatic') { 
                 if (state === 'compressing' || state === 'slamming') {
                     setPanelColor('#ef4444');
-                    statusText.innerText = state==='slamming' ? "RAPID COMPRESSION: Massive Temp Spike!" : "Work goes strictly into heating the gas";
+                    let txt = state==='slamming' ? "RAPID COMPRESSION: Massive Temp Spike!" : "Work goes strictly into heating the gas";
+                    if (adiabaticViewMode === 'experimental' && state === 'slamming') txt = "FIRE SYRINGE: Rapid compression ignites tissue!";
+                    statusText.innerText = txt;
                     termW.className += " text-red-600 scale-110"; termU.className += (state==='slamming'?" text-red-600 scale-150 animate-pulse":" text-red-600 scale-110");
-                    setLabel('w', '⬇️ Intense compression (-W)', '#ef4444', true);
-                    setLabel('u', '💥 Heat trapped, Temp spikes (+ΔU)', '#ef4444', true);
-                    setLabel('q', '🧱 Perfect Insulation', '#f97316', true);
-                } else if (state === 'expanding_drag') {
+                    setLabel('w', '⬇️ Intense compression (-W)', '#ef4444', true); setLabel('u', '💥 Heat trapped, Temp spikes (+ΔU)', '#ef4444', true); setLabel('q', '🧱 Perfect Insulation', '#f97316', true);
+                } else if (state === 'expanding_drag' || state === 'releasing') {
                     setPanelColor('#3b82f6');
-                    statusText.innerText = "Expansion rapidly cools the gas";
-                    termW.className += " scale-110 text-green-600"; termU.className += " text-blue-600 scale-110";
-                    setLabel('w', '⬆️ Rapid expansion (+W)', '#22c55e', true);
-                    setLabel('u', '🥶 Rapid cooling (-ΔU)', '#3b82f6', true);
-                    setLabel('q', '🧱 Perfect Insulation', '#f97316', true);
+                    statusText.innerText = state==='releasing' ? "RAPID EXPANSION: Massive Temp Drop!" : "Expansion rapidly cools the gas";
+                    termW.className += " scale-110 text-green-600"; termU.className += (state==='releasing'?" text-blue-600 scale-150 animate-pulse":" text-blue-600 scale-110");
+                    setLabel('w', '⬆️ Rapid expansion (+W)', '#22c55e', true); setLabel('u', '🥶 Rapid cooling (-ΔU)', '#3b82f6', true); setLabel('q', '🧱 Perfect Insulation', '#f97316', true);
+                }
+            }
+            else if (currentMode === 'general') { 
+                if (state === 'heating' || state === 'expanding_drag') {
+                    setPanelColor('#f97316'); statusText.innerText = "Gas compresses the Heavy Spring -> Pressure & Temp INCREASE (+)";
+                    termQ.innerHTML = formatTerm('ΔQ', false, '+'); termU.innerHTML = formatTerm('ΔU', false, '+'); termW.innerHTML = formatTerm('ΔW', false, '+');
+                    termQ.className += " scale-110 text-orange-600"; termU.className += " text-red-600 scale-110"; termW.className += " text-green-600 scale-110";
+                    setLabel('q', '🔥 Heat in (+ΔQ)', '#f97316', true); setLabel('u', '💥 Temp skyrockets (+ΔU)', '#ef4444', true); setLabel('w', '⬆️ Overcomes spring force (+ΔW)', '#22c55e', true);
+                } else if (state === 'cooling' || state === 'compressing') {
+                    setPanelColor('#06b6d4'); statusText.innerText = "Spring forces Volume & Pressure to DECREASE (-)";
+                    termQ.innerHTML = formatTerm('ΔQ', false, '-'); termU.innerHTML = formatTerm('ΔU', false, '-'); termW.innerHTML = formatTerm('ΔW', false, '-');
+                    termQ.className += " scale-110 text-cyan-600"; termU.className += " text-blue-600 scale-110"; termW.className += " text-slate-500 scale-110";
+                    setLabel('q', '❄️ Heat out (-ΔQ)', '#06b6d4', true); setLabel('u', '🥶 Temp plunges (-ΔU)', '#3b82f6', true); setLabel('w', '⬇️ Spring crushes gas (-ΔW)', '#64748b', true);
                 }
             }
         }
 
         function updateLabelsPosition() {
             if (currentState === 'idle') return;
-
-            const camRight = new THREE.Vector3(1, 0, 0);
-            camRight.applyQuaternion(camera.quaternion);
-
+            const camRight = new THREE.Vector3(1, 0, 0); camRight.applyQuaternion(camera.quaternion);
             const updatePos = (vector, elementId) => {
                 vector.project(camera);
-                if (vector.z > 1) { 
-                    document.getElementById(elementId).style.display = 'none';
-                    return;
-                }
+                if (vector.z > 1) { document.getElementById(elementId).style.display = 'none'; return; }
                 document.getElementById(elementId).style.display = 'flex';
-                const x = (vector.x * .5 + .5) * window.innerWidth;
-                const y = (vector.y * -.5 + .5) * window.innerHeight;
-                document.getElementById(elementId).style.left = `${x}px`;
-                document.getElementById(elementId).style.top = `${y}px`;
+                const x = (vector.x*.5+.5)*window.innerWidth; const y = (vector.y*-.5+.5)*window.innerHeight;
+                document.getElementById(elementId).style.left = `${x}px`; document.getElementById(elementId).style.top = `${y}px`;
             };
-
-            const wPos = new THREE.Vector3(0, currentPistonHeight, 0).addScaledVector(camRight, CYLINDER_RADIUS);
-            updatePos(wPos, 'label-w');
-
-            const uPos = new THREE.Vector3(0, currentPistonHeight / 2, 0).addScaledVector(camRight, -CYLINDER_RADIUS);
-            updatePos(uPos, 'label-u');
-
-            if (currentState === 'heating' || currentState === 'cooling' || currentMode === 'isothermal') {
-                const qPos = new THREE.Vector3(0, -1.5, 0).addScaledVector(camRight, CYLINDER_RADIUS);
-                updatePos(qPos, 'label-q');
+            updatePos(new THREE.Vector3(0, currentPistonHeight, 0).addScaledVector(camRight, CYLINDER_RADIUS), 'label-w');
+            updatePos(new THREE.Vector3(0, currentPistonHeight/2, 0).addScaledVector(camRight, -CYLINDER_RADIUS), 'label-u');
+            if (currentState==='heating' || currentState==='cooling' || currentMode==='isothermal' || currentMode==='isobaric' || currentMode==='general') {
+                updatePos(new THREE.Vector3(0, -1.5, 0).addScaledVector(camRight, CYLINDER_RADIUS), 'label-q');
             }
         }
 
         function drawPVGraph() {
-            if(!pvCtx) return;
-            const w = pvCanvas.width/2;
-            const h = pvCanvas.height/2;
-            pvCtx.clearRect(0,0,w,h);
+            if(!pvCtx) return; 
+            
+            // Ensure canvas internal resolution perfectly matches the responsive CSS container size
+            const rect = pvCanvas.parentElement.getBoundingClientRect();
+            if (pvCanvas.width !== Math.floor(rect.width * 2) || pvCanvas.height !== Math.floor(rect.height * 2)) {
+                pvCanvas.width = Math.floor(rect.width * 2);
+                pvCanvas.height = Math.floor(rect.height * 2);
+                pvCtx.scale(2, 2);
+            }
+            const w = rect.width; const h = rect.height;
+            
+            // Safety check to prevent IndexSizeError on negative rect drawing!
+            if (w < 60 || h < 60) return; 
 
-            // Sketchy Thick Curve
+            pvCtx.clearRect(0,0,w,h);
+            
+            // Define internal padding to ensure axes NEVER overflow the edges
+            const padL = 30; const padB = 25; const padT = 15; const padR = 20;
+
+            // 1. Draw Standard Axes & Arrows
             pvCtx.strokeStyle = '#1e293b'; 
-            pvCtx.lineWidth = 3;
-            pvCtx.lineCap = 'round';
-            pvCtx.lineJoin = 'round';
+            pvCtx.lineWidth = 2; 
+            pvCtx.beginPath();
+            pvCtx.moveTo(padL, padT); // Y axis top
+            pvCtx.lineTo(padL, h - padB); // Origin
+            pvCtx.lineTo(w - padR, h - padB); // X axis right
+            pvCtx.stroke();
+            
+            pvCtx.fillStyle = '#1e293b';
+            pvCtx.beginPath(); // Y arrow
+            pvCtx.moveTo(padL - 4, padT + 6); pvCtx.lineTo(padL, padT); pvCtx.lineTo(padL + 4, padT + 6); pvCtx.fill();
+            pvCtx.beginPath(); // X arrow
+            pvCtx.moveTo(w - padR - 6, h - padB - 4); pvCtx.lineTo(w - padR, h - padB); pvCtx.lineTo(w - padR - 6, h - padB + 4); pvCtx.fill();
+            
+            // (0,0) Label safely within bounds
+            pvCtx.font = "bold 10px 'Comic Neue', sans-serif";
+            pvCtx.fillText("(0,0)", padL - 24, h - padB + 14);
+
+            // 2. Draw Process Curves
+            pvCtx.save(); // Save state before clipping
+            pvCtx.beginPath();
+            // Clip region so graphs cleanly mask off instead of flattening against the axes!
+            pvCtx.rect(padL, padT, w - padL - padR, h - padT - padB);
+            pvCtx.clip();
+
+            pvCtx.lineWidth = 3; 
+            pvCtx.lineCap = 'round'; 
+            pvCtx.lineJoin = 'round'; 
             pvCtx.beginPath();
             
-            const vNormalized = (currentPistonHeight - MIN_HEIGHT) / (MAX_HEIGHT - MIN_HEIGHT); 
-            const drawV = 10 + vNormalized * (w - 20);
-            let drawP = h/2;
+            // Math for plotting constrained safely within the axes
+            const plotW = w - padL - padR - 10;
+            const plotH = h - padT - padB - 10;
+            
+            const drawX = (v) => padL + 10 + v * plotW;
+            const drawY = (p) => h - padB - 10 - p * plotH;
 
-            if(currentMode === 'isobaric') {
-                pvCtx.moveTo(10, h/2); pvCtx.lineTo(w-10, h/2);
+            const vNormalized = (currentPistonHeight - MIN_HEIGHT) / (MAX_HEIGHT - MIN_HEIGHT); 
+            let drawP_Norm = 0.5;
+            
+            if(currentMode === 'isobaric') { 
+                pvCtx.moveTo(drawX(0), drawY(0.5)); 
+                pvCtx.lineTo(drawX(1), drawY(0.5)); 
+                drawP_Norm = 0.5;
             } 
             else if(currentMode === 'isochoric') {
-                const fixedV = 10 + ((8 - MIN_HEIGHT)/(MAX_HEIGHT - MIN_HEIGHT)) * (w-20);
-                pvCtx.moveTo(fixedV, 10); pvCtx.lineTo(fixedV, h-10);
-                drawP = h - 10 - (internalTempCounter - 0.5) * (h-20);
-            }
-            else if(currentMode === 'isothermal') {
-                for(let x=10; x<w-10; x++) {
-                    let v = x/(w-20);
-                    let p = h - (0.2/v)*h;
-                    if(x===10) pvCtx.moveTo(x, Math.max(10, Math.min(h-10, p)));
-                    else pvCtx.lineTo(x, Math.max(10, Math.min(h-10, p)));
+                const fixedV = (8 - MIN_HEIGHT) / (MAX_HEIGHT - MIN_HEIGHT); 
+                pvCtx.moveTo(drawX(fixedV), drawY(-1)); 
+                pvCtx.lineTo(drawX(fixedV), drawY(5)); // Extends infinitely upward
+                drawP_Norm = internalTempCounter - 0.5;
+            } else if(currentMode === 'isothermal') {
+                // Smooth asymptotic curve matching textbook visuals
+                for(let i=1; i<=100; i++) { 
+                    let v = i/100; 
+                    let p = 0.2 / v; 
+                    let x = drawX(v); let y = drawY(p);
+                    if(i===1) pvCtx.moveTo(x, y); else pvCtx.lineTo(x, y); 
                 }
-                drawP = h - (0.2/Math.max(0.1, vNormalized))*h;
-            }
-            else if(currentMode === 'adiabatic') {
-                for(let x=10; x<w-10; x++) {
-                    let v = x/(w-20);
-                    let p = h - (0.1/Math.pow(v, 1.4))*h;
-                    if(x===10) pvCtx.moveTo(x, Math.max(10, Math.min(h-10, p)));
-                    else pvCtx.lineTo(x, Math.max(10, Math.min(h-10, p)));
+                drawP_Norm = 0.2 / Math.max(0.01, vNormalized);
+            } else if(currentMode === 'adiabatic') {
+                // Steeper asymptotic curve
+                for(let i=1; i<=100; i++) { 
+                    let v = i/100; 
+                    let p = 0.1 / Math.pow(v, 1.4); 
+                    let x = drawX(v); let y = drawY(p);
+                    if(i===1) pvCtx.moveTo(x, y); else pvCtx.lineTo(x, y); 
                 }
-                drawP = h - (0.1/Math.pow(Math.max(0.1, vNormalized), 1.4))*h;
+                drawP_Norm = 0.1 / Math.pow(Math.max(0.01, vNormalized), 1.4);
+            } else if(currentMode === 'general') {
+                for(let i=0; i<=100; i++) { 
+                    let v = i/100; 
+                    let p = v * v * 2.0; 
+                    let x = drawX(v); let y = drawY(p);
+                    if(i===0) pvCtx.moveTo(x, y); else pvCtx.lineTo(x, y); 
+                }
+                drawP_Norm = vNormalized * vNormalized * 2.0;
             }
-            pvCtx.stroke();
-
-            // Draw Live Dot
-            drawP = Math.max(10, Math.min(h-10, drawP));
-            pvCtx.fillStyle = '#3b82f6'; 
-            if(currentState === 'heating') pvCtx.fillStyle = '#ef4444';
-            if(currentState === 'cooling') pvCtx.fillStyle = '#06b6d4';
-            if(currentState === 'slamming') pvCtx.fillStyle = '#c084fc';
+            pvCtx.stroke(); 
             
-            pvCtx.beginPath();
-            pvCtx.arc(currentMode==='isochoric' ? 10+((8-MIN_HEIGHT)/(MAX_HEIGHT-MIN_HEIGHT))*(w-20) : drawV, drawP, 6, 0, Math.PI*2);
-            pvCtx.fill();
-            pvCtx.strokeStyle = '#1e293b'; // Sketchy dot outline
-            pvCtx.lineWidth = 2;
+            // Shared formula guarantees the dot perfectly tracks the drawn curve
+            const finalDotX = currentMode === 'isochoric' ? drawX((8 - MIN_HEIGHT) / (MAX_HEIGHT - MIN_HEIGHT)) : drawX(vNormalized);
+            const finalDotY = drawY(drawP_Norm);
+
+            pvCtx.fillStyle = '#3b82f6'; 
+            if(currentState==='heating' || (currentMode==='isobaric' && currentState==='expanding_drag') || (currentMode==='general' && currentState==='expanding_drag')) pvCtx.fillStyle = '#ef4444';
+            if(currentState==='cooling' || (currentMode==='isobaric' && currentState==='compressing') || (currentMode==='general' && currentState==='compressing')) pvCtx.fillStyle = '#06b6d4';
+            if(currentState==='slamming') pvCtx.fillStyle = '#c084fc'; if(currentState==='releasing') pvCtx.fillStyle = '#60a5fa';
+            
+            pvCtx.beginPath(); 
+            pvCtx.arc(finalDotX, finalDotY, 6, 0, Math.PI*2); 
+            pvCtx.fill(); 
+            pvCtx.strokeStyle = '#1e293b'; 
+            pvCtx.lineWidth = 2; 
             pvCtx.stroke();
+            
+            pvCtx.restore(); // Remove clipping mask
         }
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            if (effect) effect.setSize(window.innerWidth, window.innerHeight);
-        }
+        function onWindowResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); if (effect) effect.setSize(window.innerWidth, window.innerHeight); }
 
         function animate() {
-            requestAnimationFrame(animate);
-            controls.update();
+            requestAnimationFrame(animate); controls.update();
 
-            // Thermal Logic processing
             if (isHeating && !isDragging && currentMode !== 'adiabatic') {
-                if (currentMode !== 'isochoric') targetPistonHeight = Math.min(MAX_HEIGHT, targetPistonHeight + 0.08);
-                else internalTempCounter += 0.03; 
+                if (currentMode !== 'isochoric') targetPistonHeight = Math.min(MAX_HEIGHT, targetPistonHeight + 0.08); else internalTempCounter += 0.03; 
             }
             if (isCooling && !isDragging && currentMode !== 'adiabatic') {
-                if (currentMode !== 'isochoric') targetPistonHeight = Math.max(MIN_HEIGHT, targetPistonHeight - 0.08);
-                else internalTempCounter = Math.max(0.2, internalTempCounter - 0.03); 
+                if (currentMode !== 'isochoric') targetPistonHeight = Math.max(MIN_HEIGHT, targetPistonHeight - 0.08); else internalTempCounter = Math.max(0.2, internalTempCounter - 0.03); 
             }
-            if (isSlamming) {
-                 targetPistonHeight = Math.max(MIN_HEIGHT, targetPistonHeight - 0.5); 
-            }
+            
+            if (isSlamming) targetPistonHeight = Math.max(MIN_HEIGHT + 0.6, targetPistonHeight - 0.5); 
+            if (isReleasing) targetPistonHeight = Math.min(MAX_HEIGHT, targetPistonHeight + 0.5); 
 
-            // Smooth piston movement
-            if (!isDragging && !isSlamming) {
-                if (currentMode === 'isochoric') currentPistonHeight += (8 - currentPistonHeight) * 0.1; 
-                else currentPistonHeight += (targetPistonHeight - currentPistonHeight) * 0.1;
-            } else if (isSlamming) {
-                 currentPistonHeight += (targetPistonHeight - currentPistonHeight) * 0.4; 
-            }
+            if (!isDragging && !isSlamming && !isReleasing) {
+                if (currentMode === 'isochoric') currentPistonHeight += (8 - currentPistonHeight) * 0.1; else currentPistonHeight += (targetPistonHeight - currentPistonHeight) * 0.1;
+            } else if (isSlamming || isReleasing) { currentPistonHeight += (targetPistonHeight - currentPistonHeight) * 0.4; }
             pistonGroup.position.y = currentPistonHeight;
 
-            updateLabelsPosition();
-            drawPVGraph(); 
+            if (currentMode === 'general') {
+                springCoils.position.y = currentPistonHeight + 1.2; let availableHeight = CEILING_HEIGHT - (currentPistonHeight + 1.2); springCoils.scale.y = availableHeight / 6.0; 
+            }
 
-            // Visual FX
-            if (isHeating && currentMode !== 'adiabatic') {
-                fireParticles.material.opacity = THREE.MathUtils.lerp(fireParticles.material.opacity, 0.8, 0.1);
-                fireLight.intensity = THREE.MathUtils.lerp(fireLight.intensity, 3, 0.1);
-                const fPos = fireParticles.geometry.attributes.position.array;
-                for(let i=0; i < fPos.length/3; i++) {
-                    fPos[i*3+1] += 0.05 + Math.random()*0.05; 
-                    if (fPos[i*3+1] > -0.5) fPos[i*3+1] = -3; 
+            if (currentMode === 'adiabatic' && adiabaticViewMode === 'experimental') {
+                if (currentPistonHeight > 8) { tissueBurnt = false; tissueMesh.material.color.setHex(0xfdf8f5); }
+                if (isSlamming && currentPistonHeight <= MIN_HEIGHT + 1.0 && !tissueBurnt) {
+                    tissueBurnt = true; isCombusting = true; combustionTimer = 0; tissueMesh.material.color.setHex(0x1a1a1a); 
+                    const fPos = fireParticles.geometry.attributes.position.array;
+                    for(let i=0; i < fPos.length/3; i++) { fPos[i*3] = (Math.random()-0.5)*4; fPos[i*3+1] = Math.random()*2; fPos[i*3+2] = (Math.random()-0.5)*4; }
+                    fireParticles.geometry.attributes.position.needsUpdate = true;
                 }
+            } else { isCombusting = false; }
+
+            updateLabelsPosition(); drawPVGraph(); 
+
+            if (isCombusting) {
+                combustionTimer++; fireLight.position.y = 1; fireLight.intensity = 15*(1-combustionTimer/30); fireParticles.material.opacity = Math.max(0, 1-combustionTimer/30);
+                const fPos = fireParticles.geometry.attributes.position.array;
+                for(let i=0; i < fPos.length/3; i++) { fPos[i*3+1] += 0.2; if (fPos[i*3+1] > currentPistonHeight) fPos[i*3+1] = 0; }
+                fireParticles.geometry.attributes.position.needsUpdate = true; if (combustionTimer > 30) isCombusting = false;
+            } else if (isHeating && currentMode !== 'adiabatic') {
+                fireLight.position.y = -1; fireParticles.material.opacity = THREE.MathUtils.lerp(fireParticles.material.opacity, 0.8, 0.1); fireLight.intensity = THREE.MathUtils.lerp(fireLight.intensity, 3, 0.1);
+                const fPos = fireParticles.geometry.attributes.position.array;
+                for(let i=0; i < fPos.length/3; i++) { fPos[i*3+1] += 0.05 + Math.random()*0.05; if (fPos[i*3+1] > -0.5) fPos[i*3+1] = -3; }
                 fireParticles.geometry.attributes.position.needsUpdate = true;
             } else {
-                fireParticles.material.opacity = THREE.MathUtils.lerp(fireParticles.material.opacity, 0, 0.1);
-                fireLight.intensity = THREE.MathUtils.lerp(fireLight.intensity, 0, 0.1);
+                fireLight.position.y = -1; fireParticles.material.opacity = THREE.MathUtils.lerp(fireParticles.material.opacity, 0, 0.1); fireLight.intensity = THREE.MathUtils.lerp(fireLight.intensity, 0, 0.1);
                 if (!isHeating && currentMode === 'isochoric') internalTempCounter += (1.0 - internalTempCounter) * 0.02;
             }
 
-            if (isCooling && currentMode !== 'adiabatic') {
-                iceMesh.material.opacity = THREE.MathUtils.lerp(iceMesh.material.opacity, 0.7, 0.1);
-                iceMesh.position.y = THREE.MathUtils.lerp(iceMesh.position.y, -1.2, 0.1);
-                iceLight.intensity = THREE.MathUtils.lerp(iceLight.intensity, 2.5, 0.1);
-            } else {
-                iceMesh.material.opacity = THREE.MathUtils.lerp(iceMesh.material.opacity, 0, 0.1);
-                iceMesh.position.y = THREE.MathUtils.lerp(iceMesh.position.y, -3, 0.1);
-                iceLight.intensity = THREE.MathUtils.lerp(iceLight.intensity, 0, 0.1);
-            }
+            if (isCooling && currentMode !== 'adiabatic') { iceMesh.material.opacity = THREE.MathUtils.lerp(iceMesh.material.opacity, 0.7, 0.1); iceMesh.position.y = THREE.MathUtils.lerp(iceMesh.position.y, -1.2, 0.1); iceLight.intensity = THREE.MathUtils.lerp(iceLight.intensity, 2.5, 0.1); } 
+            else { iceMesh.material.opacity = THREE.MathUtils.lerp(iceMesh.material.opacity, 0, 0.1); iceMesh.position.y = THREE.MathUtils.lerp(iceMesh.position.y, -3, 0.1); iceLight.intensity = THREE.MathUtils.lerp(iceLight.intensity, 0, 0.1); }
 
-            // Gas Particles Logic
-            const positions = gasParticles.geometry.attributes.position.array;
-            const velocities = gasParticles.userData.velocities;
-            
-            let tempMultiplier = 1.0;
-            let targetColor = new THREE.Color(0xff4400); 
-            
-            if (currentMode === 'isothermal') {
-                tempMultiplier = 1.0; 
-                targetColor.setHex(0xffaa00);
-            } 
-            else if (currentMode === 'isochoric') {
-                tempMultiplier = internalTempCounter; 
-                if (isHeating) targetColor.setHex(0xff0000); 
-                if (isCooling) targetColor.setHex(0x0088ff); 
-            }
+            const positions = gasParticles.geometry.attributes.position.array; const velocities = gasParticles.userData.velocities;
+            let tempMultiplier = 1.0; let targetColor = new THREE.Color(0xff4400); 
+            if (currentMode === 'isothermal') { tempMultiplier = 1.0; targetColor.setHex(0xffaa00); } 
+            else if (currentMode === 'isochoric') { tempMultiplier = internalTempCounter; if (isHeating) targetColor.setHex(0xff0000); if (isCooling) targetColor.setHex(0x0088ff); }
             else { 
                 tempMultiplier = (currentPistonHeight / MAX_HEIGHT) + 0.5;
-                if(isDragging && currentState === 'compressing') {
-                    tempMultiplier += (currentMode === 'adiabatic' ? 2.5 : 1.5); 
-                    targetColor.setHex(0xff0000); 
+                if (currentMode === 'general') { tempMultiplier = (currentPistonHeight / MAX_HEIGHT) * 2.0; if(isDragging && currentState === 'compressing') targetColor.setHex(0x0088ff); if(isDragging && currentState === 'expanding_drag') targetColor.setHex(0xff0000); } 
+                else {
+                    if(isDragging && currentState === 'compressing') { if (currentMode === 'isobaric') { tempMultiplier = Math.max(0.1, tempMultiplier - 0.8); targetColor.setHex(0x0088ff); } else { tempMultiplier += (currentMode === 'adiabatic' ? 2.5 : 1.5); targetColor.setHex(0xff0000); } }
+                    if(isDragging && currentState === 'expanding_drag') { if (currentMode === 'isobaric') { tempMultiplier += 1.0; targetColor.setHex(0xff0000); } else { tempMultiplier = Math.max(0.1, tempMultiplier - (currentMode === 'adiabatic' ? 0.8 : 0.5)); targetColor.setHex(0x0088ff); } }
                 }
-                if(isDragging && currentState === 'expanding_drag') {
-                    tempMultiplier = Math.max(0.1, tempMultiplier - (currentMode === 'adiabatic' ? 0.8 : 0.5)); 
-                    targetColor.setHex(0x0088ff); 
-                }
-                if(isHeating) { tempMultiplier += 1.0; targetColor.setHex(0xff0000); }
-                if(isCooling) { tempMultiplier = Math.max(0.2, tempMultiplier - 0.8); targetColor.setHex(0x0088ff); }
-                if(isSlamming) { tempMultiplier += 4.0; targetColor.setHex(0xff00ff); }
+                if(isHeating) { tempMultiplier += 1.0; targetColor.setHex(0xff0000); } if(isCooling) { tempMultiplier = Math.max(0.2, tempMultiplier - 0.8); targetColor.setHex(0x0088ff); }
+                if(isSlamming) { tempMultiplier += 5.0; targetColor.setHex(0xff00ff); } if(isReleasing) { tempMultiplier = Math.max(0.1, tempMultiplier - 2.0); targetColor.setHex(0x00aaff); }
             }
-
+            if (isCombusting) { targetColor.setHex(0xffffff); tempMultiplier += 8.0; }
             gasParticles.material.color.lerp(targetColor, 0.1);
 
             for(let i = 0; i < positions.length / 3; i++) {
-                let x = positions[i*3]; let y = positions[i*3+1]; let z = positions[i*3+2];
-                let v = velocities[i];
-
-                x += v.x * tempMultiplier; y += v.y * tempMultiplier; z += v.z * tempMultiplier;
-
-                if (Math.sqrt(x*x + z*z) > CYLINDER_RADIUS - 0.2) {
-                    const angle = Math.atan2(z, x);
-                    x = Math.cos(angle) * (CYLINDER_RADIUS - 0.2);
-                    z = Math.sin(angle) * (CYLINDER_RADIUS - 0.2);
-                    v.x *= -1; v.z *= -1;
-                }
-                if (y < 0.2) { y = 0.2; v.y *= -1; }
-                if (y > currentPistonHeight - 0.5) { y = currentPistonHeight - 0.5; v.y *= -1; }
-
+                let x = positions[i*3]; let y = positions[i*3+1]; let z = positions[i*3+2]; let v = velocities[i];
+                x += v.x*tempMultiplier; y += v.y*tempMultiplier; z += v.z*tempMultiplier;
+                if (Math.sqrt(x*x + z*z) > CYLINDER_RADIUS - 0.2) { const angle = Math.atan2(z, x); x = Math.cos(angle)*(CYLINDER_RADIUS-0.2); z = Math.sin(angle)*(CYLINDER_RADIUS-0.2); v.x *= -1; v.z *= -1; }
+                if (y < 0.2) { y = 0.2; v.y *= -1; } if (y > currentPistonHeight - 0.5) { y = currentPistonHeight - 0.5; v.y *= -1; }
                 positions[i*3] = x; positions[i*3+1] = y; positions[i*3+2] = z;
             }
             gasParticles.geometry.attributes.position.needsUpdate = true;
+
+            if (heatFlowDir !== 0 && currentMode !== 'adiabatic') {
+                heatArrows.visible = true; heatFlowTime += 0.02; let t = heatFlowTime % 1; let colorHex = heatFlowDir === 1 ? 0xf97316 : 0x06b6d4; 
+                heatArrows.children.forEach(arrow => {
+                    let angle = arrow.userData.angle; arrow.userData.mat.color.setHex(colorHex);
+                    let maxD = CYLINDER_RADIUS + 3.5; let minD = CYLINDER_RADIUS + 0.5; let d;
+                    if (heatFlowDir === 1) { d = maxD - t*(maxD - minD); arrow.position.set(Math.cos(angle)*d, 0, Math.sin(angle)*d); arrow.lookAt(0, heatArrows.position.y, 0); } 
+                    else { d = minD + t*(maxD - minD); arrow.position.set(Math.cos(angle)*d, 0, Math.sin(angle)*d); let targetX = Math.cos(angle)*(d+10); let targetZ = Math.sin(angle)*(d+10); arrow.lookAt(targetX, heatArrows.position.y, targetZ); }
+                    arrow.userData.mat.opacity = Math.sin(t * Math.PI) * 0.8;
+                });
+            } else { heatArrows.visible = false; heatFlowTime = 0; }
 
             effect.render(scene, camera);
         }
